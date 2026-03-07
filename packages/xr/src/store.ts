@@ -800,6 +800,10 @@ async function setupXRManager(
   if (xr == null) {
     return
   }
+  if (options?.webgpu) {
+    await xr.setSession(session)
+    return
+  }
   const maxFrameBufferScalingFactor = XRWebGLLayer.getNativeFramebufferScaleFactor(session)
   let frameBufferScaling = options?.frameBufferScaling
   if (typeof frameBufferScaling === 'function') {

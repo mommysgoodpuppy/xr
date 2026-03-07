@@ -40,6 +40,10 @@ export type XRSessionInitOptions = {
    */
   depthSensing?: XRSessionFeatureRequest
   /**
+   * @default false
+   */
+  webgpu?: XRSessionFeatureRequest
+  /**
    * overrides the session init object
    * use with caution
    * @default undefined
@@ -66,6 +70,7 @@ export function buildXRSessionInit(
     planeDetection = true,
     customSessionInit,
     depthSensing = false,
+    webgpu = false,
     hitTest = true,
     domOverlay = true,
     bodyTracking = false, //until 6.7 since breaking change
@@ -91,6 +96,7 @@ export function buildXRSessionInit(
   addXRSessionFeature(meshDetection, 'mesh-detection', requiredFeatures, optionalFeatures)
   addXRSessionFeature(planeDetection, 'plane-detection', requiredFeatures, optionalFeatures)
   addXRSessionFeature(depthSensing, 'depth-sensing', requiredFeatures, optionalFeatures)
+  addXRSessionFeature(webgpu, 'webgpu', requiredFeatures, optionalFeatures)
   addXRSessionFeature(domOverlay, 'dom-overlay', requiredFeatures, optionalFeatures)
   addXRSessionFeature(hitTest, 'hit-test', requiredFeatures, optionalFeatures)
   addXRSessionFeature(bodyTracking, 'body-tracking', requiredFeatures, optionalFeatures)
