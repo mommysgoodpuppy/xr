@@ -217,12 +217,12 @@ export class HandleStore<T>
     this.releasePointer(event.pointerId, event.object, event)
   }
 
-  update(time: number) {
+  update(time: number, force: boolean = false) {
     const target = this.getTarget()
     if (
       target == null ||
       this.inputState.size === 0 ||
-      (this.latestMoveEvent == null && (this.getOptions().alwaysUpdate ?? false) === false)
+      (!force && this.latestMoveEvent == null && (this.getOptions().alwaysUpdate ?? false) === false)
     ) {
       return
     }
@@ -257,6 +257,18 @@ export class HandleStore<T>
     this.outputState.update(this.latestMoveEvent, transformState)
     this.outputState.memo = this.apply(target)
     this.latestMoveEvent = undefined
+  }
+
+  /** Move an active grab along its pointer ray and apply the transform immediately. */
+  translateAlongPointerRay(pointerId: number, distance: number): boolean {
+    const pointer = this.inputState.get(pointerId)
+    const direction = pointer?.pointerWorldDirection
+    if (pointer == null || direction == null || !Number.isFinite(distance) || distance === 0) {
+      return false
+    }
+    pointer.initialPointerWorldPoint.addScaledVector(direction, -distance)
+    this.update(this.outputState.current.time + 1 / 60, true)
+    return true
   }
 
   protected getTarget() {
