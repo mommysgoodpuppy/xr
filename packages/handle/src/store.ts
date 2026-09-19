@@ -103,6 +103,8 @@ export class HandleStore<T>
     OnePointerHandlePointerData & TwoPointerHandlePointerData & TranslateAsHandlePointerData
   >()
   readonly capturedObjects = new Map<number, Object3D>()
+  /** Prevent duplicate runtime devices for one physical hand from becoming fake multitouch. */
+  readonly capturedPointerGroups = new Map<number, string>()
   readonly initialTargetPosition = new Vector3()
   readonly initialTargetQuaternion = new Quaternion()
   readonly initialTargetRotation = new Euler()
@@ -166,9 +168,16 @@ export class HandleStore<T>
     if (this.getOptions().filter?.(event) === false) {
       return
     }
+    const pointerGroup = getExclusivePointerGroup(event)
+    if (pointerGroup != null && [...this.capturedPointerGroups.values()].includes(pointerGroup)) {
+      return
+    }
     this.stopPropagation(event)
     if (!this.capturePointer(event.pointerId, event.object)) {
       return
+    }
+    if (pointerGroup != null) {
+      this.capturedPointerGroups.set(event.pointerId, pointerGroup)
     }
     this.firstOnPointer(event)
   }
@@ -201,6 +210,7 @@ export class HandleStore<T>
       object.releasePointerCapture(pointerId)
     }
     this.capturedObjects.clear()
+    this.capturedPointerGroups.clear()
     this.inputState.clear()
     this.outputState.end(undefined)
     const target = this.getTarget()
@@ -295,6 +305,7 @@ export class HandleStore<T>
       return
     }
     this.inputState.delete(pointerId)
+    this.capturedPointerGroups.delete(pointerId)
     object.releasePointerCapture(pointerId)
     if (this.inputState.size > 0) {
       this.save()
@@ -374,6 +385,14 @@ export class HandleStore<T>
 }
 
 function noop() {}
+
+function getExclusivePointerGroup(event: PointerEvent): string | undefined {
+  if (event.pointerType !== 'grab') {
+    return undefined
+  }
+  const handedness = (event.pointerState as { inputSource?: { handedness?: string } } | null)?.inputSource?.handedness
+  return handedness === 'left' || handedness === 'right' ? `grab:${handedness}` : undefined
+}
 
 export function defaultApply(state: HandleState<unknown>, target: Object3D): any {
   target.position.copy(state.current.position)
