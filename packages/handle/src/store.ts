@@ -56,6 +56,19 @@ export type HandleOptions<T> = {
     uniform?: boolean
   }
   /**
+   * Largest grab offset (metres between the pointer and the point it grabbed) that may drive a
+   * one-hand scale under `translate: 'as-rotate-and-scale'`.
+   *
+   * A direct grab has the hand at the element, so the offset is a few centimetres and a radial pull
+   * is deliberate. A laser's grab point sits a whole grab-distance away, so the same pull reacts to
+   * pointing wobble and the panel slides in size. `undefined` allows any offset. Never applies while
+   * two pointers are down — a pinch always resizes.
+   *
+   * Measured from geometry rather than the pointer or intersection type: a controller may expose
+   * its ray as a 'grab' pointer, and a near-hand sphere can still fire at arm's length.
+   */
+  oneHandScaleMaxGrabOffset?: number
+  /**
    * Filter interaction. Return false to ignore the event.
    */
   filter?: (event: PointerEvent) => boolean
@@ -89,6 +102,8 @@ export type HandleTransformOptions =
   | Array<Vector3Tuple | Vector3>
 
 const vectorHelper = new Vector3()
+const axisHelper = new Vector3()
+const rotationHelper = new Quaternion()
 
 export class HandleStore<T>
   implements OnePointerHandleStoreData, TwoPointerHandleStoreData, TranslateAsHandleStoreData
@@ -115,6 +130,8 @@ export class HandleStore<T>
   prevTwoPointerDeltaRotation: Quaternion | undefined
   prevTranslateAsDeltaRotation: Quaternion | undefined
   prevAngle: number | undefined
+  /** Extra rotation applied on top of the pointer-derived transform, for the current grab. */
+  pendingRotation: Quaternion | undefined
 
   public readonly handlers = {
     onPointerDown: this.onPointerDown.bind(this),
@@ -255,13 +272,41 @@ export class HandleStore<T>
       options.translate === 'as-rotate-and-scale' ||
       options.translate === 'as-scale'
     ) {
-      options.translate
       this.prevTwoPointerDeltaRotation = undefined
       this.prevAngle = undefined
-      const [p1] = this.inputState.values()
+      const [p1, p2] = this.inputState.values()
       const matrixWorld = target.matrixWorld
       const parentMatrixWorld = target.parent?.matrixWorld
-      transformState = computeTranslateAsHandleTransformState(time, p1, this, matrixWorld, parentMatrixWorld, options)
+      transformState = computeTranslateAsHandleTransformState(
+        time,
+        this.inputState.size,
+        p1,
+        this,
+        matrixWorld,
+        parentMatrixWorld,
+        options,
+      )
+      // A constrained rotation would otherwise be single-pointer only, so a second hand could not
+      // resize the element. The rotation stays the first pointer's ('as-rotate'); the second only
+      // contributes the pinch scale.
+      if (p2 != null && options.scale !== false) {
+        const pinch = computeTwoPointerHandleTransformState(
+          time,
+          p1,
+          p2,
+          this,
+          parentMatrixWorld,
+          { ...options, translate: false, rotate: false },
+        )
+        transformState = { ...transformState, scale: pinch.scale }
+      } else if (
+        options.oneHandScaleMaxGrabOffset != null &&
+        p1.pointerWorldPoint.distanceTo(p1.pointerWorldOrigin) > options.oneHandScaleMaxGrabOffset
+      ) {
+        // A grab out at arm's length keeps the rotation only; the radial pull would be a laser's
+        // twitchy lever rather than a deliberate resize.
+        transformState = { ...transformState, scale: this.initialTargetScale.clone() }
+      }
     } else if (this.inputState.size === 1) {
       this.prevTwoPointerDeltaRotation = undefined
       this.prevAngle = undefined
@@ -286,7 +331,37 @@ export class HandleStore<T>
     if (pointer == null || direction == null || !Number.isFinite(distance) || distance === 0) {
       return false
     }
+    // A string `translate` ('as-rotate'/'as-scale') routes translation into rotation or scale, so
+    // the handle has no free translation to move. Shifting the pointer baseline anyway would feed
+    // a bogus term into the derived transform and corrupt the in-progress grab.
+    const translateOption = this.getOptions().translate
+    if (translateOption === false || typeof translateOption === 'string') {
+      return false
+    }
     pointer.initialPointerWorldPoint.addScaledVector(direction, -distance)
+    this.update(this.outputState.current.time + 1 / 60, true)
+    return true
+  }
+
+  /**
+   * Hand an active grab's constrained rotation over to an absolute target-frame angle, e.g. a
+   * joystick.
+   *
+   * Rebasing first (`save`) collapses the pointer's accumulated delta to identity, so while the
+   * caller keeps calling this the hand no longer turns the target at all — the two inputs can no
+   * longer fight. When the caller stops, the next pointer move rotates on from the angle left here.
+   * `angle` is absolute (not a delta), so the caller can clamp it against the rotation limits
+   * without a wind-up dead zone.
+   */
+  setTargetAxisAngle(pointerId: number, axis: Axis, angle: number): boolean {
+    if (!this.inputState.has(pointerId) || !Number.isFinite(angle)) {
+      return false
+    }
+    this.save()
+    this.pendingRotation = rotationHelper.setFromAxisAngle(
+      axisHelper.set(axis === 'x' ? 1 : 0, axis === 'y' ? 1 : 0, axis === 'z' ? 1 : 0),
+      angle - this.initialTargetRotation[axis],
+    )
     this.update(this.outputState.current.time + 1 / 60, true)
     return true
   }
@@ -300,7 +375,11 @@ export class HandleStore<T>
       return false
     }
     const { multitouch, translate } = this.getOptions()
-    if (((multitouch ?? true) === false || typeof translate === 'string') && this.capturedObjects.size === 1) {
+    // A string `translate` is single-pointer for the *transform*, but a second pointer may still
+    // join to pinch-scale when scaling is enabled.
+    const singlePointerTransform = (multitouch ?? true) === false ||
+      (typeof translate === 'string' && this.getOptions().scale === false)
+    if (singlePointerTransform && this.capturedObjects.size === 1) {
       return false
     }
     this.capturedObjects.set(pointerId, object)
@@ -350,6 +429,7 @@ export class HandleStore<T>
     this.prevAngle = undefined
     this.prevTwoPointerDeltaRotation = undefined
     this.prevTranslateAsDeltaRotation = undefined
+    this.pendingRotation = undefined
     //update initial
     this.initialTargetParentWorldMatrix = target.parent?.matrixWorld.clone()
     if (target.matrixAutoUpdate) {
