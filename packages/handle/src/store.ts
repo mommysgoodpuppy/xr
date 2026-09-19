@@ -103,6 +103,8 @@ export class HandleStore<T>
     OnePointerHandlePointerData & TwoPointerHandlePointerData & TranslateAsHandlePointerData
   >()
   readonly capturedObjects = new Map<number, Object3D>()
+  /** Prevent duplicate runtime devices for one physical hand from becoming fake multitouch. */
+  readonly capturedPointerGroups = new Map<number, string>()
   readonly initialTargetPosition = new Vector3()
   readonly initialTargetQuaternion = new Quaternion()
   readonly initialTargetRotation = new Euler()
@@ -118,6 +120,7 @@ export class HandleStore<T>
     onPointerDown: this.onPointerDown.bind(this),
     onPointerMove: this.onPointerMove.bind(this),
     onPointerUp: this.onPointerUp.bind(this),
+    onPointerCancel: this.onPointerCancel.bind(this),
   }
 
   constructor(
@@ -166,9 +169,16 @@ export class HandleStore<T>
     if (this.getOptions().filter?.(event) === false) {
       return
     }
+    const pointerGroup = getExclusivePointerGroup(event)
+    if (pointerGroup != null && [...this.capturedPointerGroups.values()].includes(pointerGroup)) {
+      return
+    }
     this.stopPropagation(event)
     if (!this.capturePointer(event.pointerId, event.object)) {
       return
+    }
+    if (pointerGroup != null) {
+      this.capturedPointerGroups.set(event.pointerId, pointerGroup)
     }
     this.firstOnPointer(event)
   }
@@ -201,6 +211,7 @@ export class HandleStore<T>
       object.releasePointerCapture(pointerId)
     }
     this.capturedObjects.clear()
+    this.capturedPointerGroups.clear()
     this.inputState.clear()
     this.outputState.end(undefined)
     const target = this.getTarget()
@@ -215,6 +226,15 @@ export class HandleStore<T>
     }
     this.stopPropagation(event)
     this.releasePointer(event.pointerId, event.object, event)
+  }
+
+  private onPointerCancel(event: PointerEvent): void {
+    const capturedObject = this.capturedObjects.get(event.pointerId)
+    if (capturedObject == null) {
+      return
+    }
+    this.stopPropagation(event)
+    this.releasePointer(event.pointerId, capturedObject, event)
   }
 
   update(time: number, force: boolean = false) {
@@ -294,6 +314,7 @@ export class HandleStore<T>
       return
     }
     this.inputState.delete(pointerId)
+    this.capturedPointerGroups.delete(pointerId)
     object.releasePointerCapture(pointerId)
     if (this.inputState.size > 0) {
       this.save()
@@ -350,14 +371,16 @@ export class HandleStore<T>
   }
 
   bind(handle: Object3D): () => void {
-    const { onPointerDown, onPointerMove, onPointerUp } = this.handlers
+    const { onPointerDown, onPointerMove, onPointerUp, onPointerCancel } = this.handlers
     handle.addEventListener('pointerdown', onPointerDown)
     handle.addEventListener('pointermove', onPointerMove)
     handle.addEventListener('pointerup', onPointerUp)
+    handle.addEventListener('pointercancel', onPointerCancel)
     return () => {
       handle.removeEventListener('pointerdown', onPointerDown)
       handle.removeEventListener('pointermove', onPointerMove)
       handle.removeEventListener('pointerup', onPointerUp)
+      handle.removeEventListener('pointercancel', onPointerCancel)
       this.cancel()
     }
   }
@@ -371,6 +394,14 @@ export class HandleStore<T>
 }
 
 function noop() {}
+
+function getExclusivePointerGroup(event: PointerEvent): string | undefined {
+  if (event.pointerType !== 'grab') {
+    return undefined
+  }
+  const handedness = (event.pointerState as { inputSource?: { handedness?: string } } | null)?.inputSource?.handedness
+  return handedness === 'left' || handedness === 'right' ? `grab:${handedness}` : undefined
+}
 
 export function defaultApply(state: HandleState<unknown>, target: Object3D): any {
   target.position.copy(state.current.position)
