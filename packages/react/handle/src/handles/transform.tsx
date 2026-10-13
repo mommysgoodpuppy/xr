@@ -87,7 +87,7 @@ export const TransformHandlesContext = forwardRef<Group, TransformHandlesContext
     if (space !== null) {
       context.space = space
     }
-    useFrame((state) => context.update(state.clock.getElapsedTime()), -1)
+    useFrame((state) => context.update(state.clock.getElapsedTime()), { priority: 1 })
     return (
       <group {...props} ref={internalRef}>
         <HandlesContext.Provider value={context}>{children}</HandlesContext.Provider>
