@@ -315,25 +315,6 @@ export class HandleStore<T>
     this.latestMoveEvent = undefined
   }
 
-  /** Move an active grab along its pointer ray and apply the transform immediately. */
-  translateAlongPointerRay(pointerId: number, distance: number): boolean {
-    const pointer = this.inputState.get(pointerId)
-    const direction = pointer?.pointerWorldDirection
-    if (pointer == null || direction == null || !Number.isFinite(distance) || distance === 0) {
-      return false
-    }
-    // A string `translate` ('as-rotate'/'as-scale') routes translation into rotation or scale, so
-    // the handle has no free translation to move. Shifting the pointer baseline anyway would feed
-    // a bogus term into the derived transform and corrupt the in-progress grab.
-    const translateOption = this.getOptions().translate
-    if (translateOption === false || typeof translateOption === 'string') {
-      return false
-    }
-    pointer.initialPointerWorldPoint.addScaledVector(direction, -distance)
-    this.update(this.outputState.current.time + 1 / 60, true)
-    return true
-  }
-
   /**
    * Hand an active grab's constrained rotation over to an absolute target-frame angle, e.g. a
    * joystick.
