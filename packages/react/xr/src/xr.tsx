@@ -99,7 +99,7 @@ export function XR({ children, store }: XRProperties) {
       rootStore.setState({ camera: initialCamera })
     })
   }, [rootStore, store])
-  useFrame((state, _delta, frame) => store.onBeforeFrame(state.scene, state.camera, frame), -1000)
+  useFrame((state, _delta, frame) => store.onBeforeFrame(state.scene, state.camera, frame), { priority: 1000 })
   useFrame(() => store.onBeforeRender())
   return (
     <xrContext.Provider value={store}>
@@ -129,7 +129,7 @@ export function RootCombinedPointer({ children }: { children?: ReactNode }) {
     () => setupSyncIsVisible(store, (visible) => pointer.setEnabled(visible, { timeStamp: performance.now() })),
     [store, pointer],
   )
-  useFrame((state) => pointer.move(state.scene, { timeStamp: performance.now() }), -50)
+  useFrame((state) => pointer.move(state.scene, { timeStamp: performance.now() }), { priority: 50 })
   return <combinedPointerContext.Provider value={pointer}>{children}</combinedPointerContext.Provider>
 }
 

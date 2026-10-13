@@ -62,7 +62,7 @@ export function useHandle<T>(
       }),
     [target],
   )
-  useFrame((state) => store.update(state.clock.getElapsedTime()), -1)
+  useFrame((state) => store.update(state.clock.getElapsedTime()), { priority: 1 })
   const handleRef = options.handle ?? target
   useEffect(() => {
     if (options.bind === false) {

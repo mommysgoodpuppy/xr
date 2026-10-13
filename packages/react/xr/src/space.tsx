@@ -258,5 +258,5 @@ export function useApplyXRSpaceMatrix(
     }
     onFrame?.(state, delta, frame)
     //makes sure we update the frame before using the space transformation anywhere
-  }, -100)
+  }, { priority: 100 })
 }
