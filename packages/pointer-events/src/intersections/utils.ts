@@ -63,6 +63,9 @@ export function intersectPointerEventTargets(
   parentPointerEventsType?: AllowedPointerEventsType,
   parentPointerEventsOrder?: number,
 ): void {
+  if (!object.visible) {
+    return
+  }
   const hasListener = parentHasListener || hasObjectListeners(type, object)
   const pointerEvents = object.pointerEvents ?? parentPointerEvents
   const pointerEventsOrDefault = pointerEvents ?? object.defaultPointerEvents ?? 'listener'
