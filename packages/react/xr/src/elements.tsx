@@ -68,7 +68,7 @@ function XRControllers() {
           return null
         }
         return (
-          <xrInputSourceStateContext.Provider key={state.id} value={state}>
+          <xrInputSourceStateContext.Provider key={objectToKey(state)} value={state}>
             <XRSpace space="target-ray-space">
               <Suspense>
                 {typeof ResolvedImpl === 'function' ? <ResolvedImpl /> : <DefaultXRController {...ResolvedImpl} />}
