@@ -121,7 +121,7 @@ export class HandleStore<T>
   }
 
   constructor(
-    private readonly target: Object3D | { current?: Object3D | null },
+    protected readonly target: Object3D | { current?: Object3D | null },
     public readonly getOptions: () => HandleOptions<T> = () => ({}),
   ) {
     this.outputState = new HandleStateImpl<T>(this.cancel.bind(this))
@@ -130,7 +130,7 @@ export class HandleStore<T>
   /**
    * @requires that the pointerId is in this.capturedSet
    */
-  private firstOnPointer(event: PointerEvent): void {
+  protected firstOnPointer(event: PointerEvent): void {
     const target = this.getTarget()
     if (target == null) {
       return
@@ -162,7 +162,7 @@ export class HandleStore<T>
     this.outputState.memo = this.apply(target)
   }
 
-  private onPointerDown(event: PointerEvent): void {
+  protected onPointerDown(event: PointerEvent): void {
     if (this.getOptions().filter?.(event) === false) {
       return
     }
@@ -173,7 +173,7 @@ export class HandleStore<T>
     this.firstOnPointer(event)
   }
 
-  private onPointerMove(event: PointerEvent): void {
+  protected onPointerMove(event: PointerEvent): void {
     if (!this.capturedObjects.has(event.pointerId)) {
       return
     }
@@ -209,7 +209,7 @@ export class HandleStore<T>
     }
   }
 
-  private onPointerEnd(event: PointerEvent): void {
+  protected onPointerEnd(event: PointerEvent): void {
     const object = this.capturedObjects.get(event.pointerId)
     if (object == null) {
       return
@@ -264,7 +264,7 @@ export class HandleStore<T>
     return this.target instanceof Object3D ? this.target : this.target?.current
   }
 
-  private capturePointer(pointerId: number, object: Object3D): boolean {
+  protected capturePointer(pointerId: number, object: Object3D): boolean {
     if (this.capturedObjects.has(pointerId)) {
       return false
     }
@@ -277,7 +277,7 @@ export class HandleStore<T>
     return true
   }
 
-  private releasePointer(pointerId: number, object: Object3D, event: PointerEvent | undefined): void {
+  protected releasePointer(pointerId: number, object: Object3D, event: PointerEvent | undefined): void {
     const target = this.getTarget()
     if (target == null || !this.capturedObjects.delete(pointerId)) {
       return
@@ -292,7 +292,7 @@ export class HandleStore<T>
     this.apply(target)
   }
 
-  private stopPropagation(event: PointerEvent | undefined) {
+  protected stopPropagation(event: PointerEvent | undefined) {
     if (event == null || !(this.getOptions()?.stopPropagation ?? true)) {
       return
     }

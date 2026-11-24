@@ -1,7 +1,7 @@
 import { HandleStore } from '@pmndrs/handle'
 import { createContext, forwardRef, ReactNode, RefObject, useContext, useImperativeHandle, useRef } from 'react'
 import { Group, Object3D } from 'three'
-import { HandleOptions, useHandle } from './hook.js'
+import { CreateHandleStore, HandleOptions, useHandle } from './hook.js'
 
 const HandleTargetRefContext = createContext<RefObject<Object3D | null> | undefined>(undefined)
 
@@ -31,8 +31,10 @@ export const Handle = forwardRef<
      */
     useTargetFromContext?: boolean
     getHandleOptions?: () => HandleOptions<unknown>
+    /** Builds the store, e.g. a `HandleStore` subclass with application behaviour. */
+    createStore?: CreateHandleStore<unknown>
   } & Omit<HandleOptions<unknown>, 'handle'>
->(({ children, handleRef: providedHandleRef, useTargetFromContext, targetRef, getHandleOptions, ...props }, ref) => {
+>(({ children, handleRef: providedHandleRef, useTargetFromContext, targetRef, getHandleOptions, createStore, ...props }, ref) => {
   const handleRef = useRef<Group>(null)
   let contextHandleTargetRef = useContext(HandleTargetRefContext)
   if (useTargetFromContext === true) {
@@ -54,6 +56,7 @@ export const Handle = forwardRef<
       ...props,
     },
     getHandleOptions,
+    createStore,
   )
   useImperativeHandle(ref, () => store, [store])
   if (providedHandleRef != null) {

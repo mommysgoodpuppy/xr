@@ -15,6 +15,11 @@ export type HandleOptions<T> = {
   bind?: boolean
 } & BaseHandleOptions<T>
 
+export type CreateHandleStore<T> = (
+  target: RefObject<Object3D | null>,
+  getOptions: () => BaseHandleOptions<T>,
+) => HandleStore<T>
+
 /**
  * // TODO: Add a valid description for this function.
  *
@@ -28,6 +33,8 @@ export function useHandle<T>(
   target: RefObject<Object3D | null>,
   options: HandleOptions<T> = {},
   getHandleOptions?: () => HandleOptions<T>,
+  /** Builds the store, e.g. a `HandleStore` subclass with application behaviour. */
+  createStore: CreateHandleStore<T> = (target, getOptions) => new HandleStore<T>(target, getOptions),
 ): HandleStore<T> {
   const invalidate = useThree((s) => s.invalidate)
   const optionsRef = useRef(options)
@@ -38,7 +45,7 @@ export function useHandle<T>(
   invalidateRef.current = invalidate
   const store = useMemo(
     () =>
-      new HandleStore<T>(target, () => {
+      createStore(target, () => {
         const opts = { ...getHandleOptionsRef.current?.(), ...optionsRef.current }
         const userApply = opts.apply
         if (userApply == null) {
@@ -62,7 +69,7 @@ export function useHandle<T>(
       }),
     [target],
   )
-  useFrame((state) => store.update(state.clock.getElapsedTime()), -1)
+  useFrame((state) => store.update(state.clock.getElapsedTime()), { priority: 1 })
   const handleRef = options.handle ?? target
   useEffect(() => {
     if (options.bind === false) {
