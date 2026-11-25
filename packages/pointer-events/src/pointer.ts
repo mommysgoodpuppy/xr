@@ -121,6 +121,7 @@ export class Pointer {
   private pointerEnteredHelper: Array<Object3D> = []
   private pointerCapture: PointerCapture | undefined
   private buttonsDownTime: ButtonsTime = new Map()
+  private readonly buttonsDownObject = new Map<number, Object3D>()
   private readonly buttonsDown = new Set<number>()
 
   //to handle interaction before first move (after exit)
@@ -305,10 +306,13 @@ export class Pointer {
     object[buttonsDownTimeKey] ??= new Map()
     object[buttonsDownTimeKey].set(nativeEvent.button, nativeEvent.timeStamp)
     this.buttonsDownTime.set(nativeEvent.button, nativeEvent.timeStamp)
+    this.buttonsDownObject.set(nativeEvent.button, object)
   }
 
   up(nativeEvent: NativeEvent & { button: number }): void {
     this.buttonsDown.delete(nativeEvent.button)
+    const downObject = this.buttonsDownObject.get(nativeEvent.button)
+    this.buttonsDownObject.delete(nativeEvent.button)
     if (!this.enabled) {
       return
     }
@@ -327,9 +331,10 @@ export class Pointer {
     } = this.options
 
     this.clearPointerCapture()
-    const isClicked = getIsClicked(
+    const clickTarget = getClickTarget(
       this.buttonsDownTime,
-      this.intersection.object[buttonsDownTimeKey],
+      downObject,
+      this.intersection.object,
       nativeEvent.button,
       nativeEvent.timeStamp,
       clickThresholdMs,
@@ -338,23 +343,26 @@ export class Pointer {
     const camera = this.getCamera()
 
     //context menu
-    if (isClicked && nativeEvent.button === contextMenuButton) {
-      emitPointerEvent(new PointerEvent('contextmenu', true, nativeEvent, this, this.intersection, camera))
+    if (clickTarget != null && nativeEvent.button === contextMenuButton) {
+      emitPointerEvent(
+        new PointerEvent('contextmenu', true, nativeEvent, this, this.intersection, camera, clickTarget, clickTarget),
+      )
     }
 
     //poinerup
     emitPointerEvent(new PointerEvent('pointerup', true, nativeEvent, this, this.intersection, camera))
 
-    if (!isClicked || nativeEvent.button === contextMenuButton) {
+    if (clickTarget == null || nativeEvent.button === contextMenuButton) {
       return
     }
 
-    //click
-    emitPointerEvent(new PointerEvent('click', true, nativeEvent, this, this.intersection, camera))
+    //click (W3C UI Events: dispatch on nearest common ancestor of pointerdown and pointerup targets)
+    emitPointerEvent(
+      new PointerEvent('click', true, nativeEvent, this, this.intersection, camera, clickTarget, clickTarget),
+    )
 
     //dblclick
-    const { object } = this.intersection
-    const buttonsClickTime = (object[buttonsClickTimeKey] ??= new Map())
+    const buttonsClickTime = (clickTarget[buttonsClickTimeKey] ??= new Map())
     const buttonClickTime = buttonsClickTime.get(nativeEvent.button)
 
     if (buttonClickTime == null || nativeEvent.timeStamp - buttonClickTime > dblClickThresholdMs) {
@@ -362,13 +370,16 @@ export class Pointer {
       return
     }
 
-    emitPointerEvent(new PointerEvent('dblclick', true, nativeEvent, this, this.intersection, camera))
+    emitPointerEvent(
+      new PointerEvent('dblclick', true, nativeEvent, this, this.intersection, camera, clickTarget, clickTarget),
+    )
     buttonsClickTime.delete(nativeEvent.button)
   }
 
   cancel(nativeEvent: NativeEvent): void {
     this.buttonsDown.clear()
     this.buttonsDownTime.clear()
+    this.buttonsDownObject.clear()
     this.clearPointerCapture()
     this.onFirstMove.length = 0
     if (!this.enabled || !this.wasMoved || this.intersection == null) {
@@ -457,26 +468,39 @@ function computeEnterLeave(
   computeEnterLeave(currentObject.parent, targetAllAncestors, targeDiffRemovedAncestors, targetDiffAddedAncestors)
 }
 
-function getIsClicked(
+function findCommonAncestor(a: Object3D, b: Object3D): Object3D | undefined {
+  if (a === b) return a
+  const ancestors = new Set<Object3D>()
+  for (let cur: Object3D | null = a; cur != null; cur = cur.parent) {
+    ancestors.add(cur)
+  }
+  for (let cur: Object3D | null = b; cur != null; cur = cur.parent) {
+    if (ancestors.has(cur)) return cur
+  }
+  return undefined
+}
+
+function getClickTarget(
   pointerButtonsPressTime: ButtonsTime,
-  objectButtonsDownTime: ButtonsTime | undefined,
+  downObject: Object3D | undefined,
+  upObject: Object3D,
   button: number,
   buttonUpTime: number,
   clickThresholdMs: number,
-): boolean {
-  if (objectButtonsDownTime == null) {
-    return false
+): Object3D | undefined {
+  if (downObject == null) {
+    return undefined
   }
-  const objectButtonPressTime = objectButtonsDownTime.get(button)
-  if (objectButtonPressTime == null) {
-    return false
+  const pressTime = pointerButtonsPressTime.get(button)
+  if (pressTime == null) {
+    return undefined
   }
-  if (buttonUpTime - objectButtonPressTime > clickThresholdMs) {
-    return false
+  if (buttonUpTime - pressTime > clickThresholdMs) {
+    return undefined
   }
-  if (objectButtonPressTime != pointerButtonsPressTime.get(button)) {
-    //we have released the button somewhere else
-    return false
+  const objectPressTime = downObject[buttonsDownTimeKey]?.get(button)
+  if (objectPressTime !== pressTime) {
+    return undefined
   }
-  return true
+  return findCommonAncestor(downObject, upObject)
 }
